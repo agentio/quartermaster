@@ -28,8 +28,8 @@ Usage:
   q show <appid>
   q create <appname>
   q upload <appid>
-  q (start|stop) <appid>
-  q (start|stop) <appid> <versionid>
+  q (start|stop|restart) <appid>
+  q (start|stop|restart) <appid> <versionid>
   q delete <appid>
   q delete <appid> <versionid>  
   q -h | --help
@@ -46,23 +46,32 @@ Options:
 
 	arguments, _ := docopt.Parse(usage, nil, true, "Agent I/O 0.1", false)
 
+	credentialsFileName := fmt.Sprintf("%v/.agent.json", os.Getenv("HOME"))
+
 	var c agent.Connection
 	if arguments["connect"].(bool) {
 		c.Service = arguments["<service>"].(string)
 		c.Credentials = fmt.Sprintf("%v:%v", arguments["-u"], arguments["-p"])
 		bytes, err := json.Marshal(c)
 		check(err)
-		err = ioutil.WriteFile(fmt.Sprintf("%v/.agent.json", os.Getenv("HOME")), bytes, 0644)
+		err = ioutil.WriteFile(credentialsFileName, bytes, 0644)
 		check(err)
 	} else {
-		bytes, err := ioutil.ReadFile(fmt.Sprintf("%v/.agent.json", os.Getenv("HOME")))
-		check(err)
+		bytes, err := ioutil.ReadFile(credentialsFileName)
+		if err != nil {
+			fmt.Printf("Unable to read agent information from %v\n", credentialsFileName)
+			return
+		}
 		json.Unmarshal(bytes, &c)
 	}
 
 	if arguments["list"].(bool) {
 		var apps []agent.App
-		c.GetApps(&apps)
+		err := c.GetApps(&apps)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
 
 		table := tablewriter.NewWriter(os.Stdout)
 		table.SetHeader([]string{"Id", "Name", "Description", "Workers"})
@@ -80,8 +89,11 @@ Options:
 
 	if arguments["show"].(bool) {
 		var app agent.App
-		c.GetApp(&app, arguments["<appid>"].(string))
-
+		err := c.GetApp(&app, arguments["<appid>"].(string))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
 		{
 			table := tablewriter.NewWriter(os.Stdout)
 			table.SetColWidth(100)
@@ -178,6 +190,27 @@ Options:
 		case nil:
 			var result map[string]interface{}
 			c.StopApp(&result, appid)
+			fmt.Printf("\n%+v\n\n", result)
+		default:
+		}
+		return
+	}
+
+	if arguments["restart"].(bool) {
+		appid := arguments["<appid>"].(string)
+		switch arguments["<versionid>"].(type) {
+		case string:
+			versionid := arguments["<versionid>"].(string)
+			var result map[string]interface{}
+			c.StopAppVersion(&result, appid, versionid)
+			fmt.Printf("\n%+v\n\n", result)
+			c.StartAppVersion(&result, appid, versionid)
+			fmt.Printf("\n%+v\n\n", result)
+		case nil:
+			var result map[string]interface{}
+			c.StopApp(&result, appid)
+			fmt.Printf("\n%+v\n\n", result)
+			c.StartApp(&result, appid)
 			fmt.Printf("\n%+v\n\n", result)
 		default:
 		}
