@@ -6,8 +6,10 @@ import (
 	"github.com/agentio/agent"
 	"github.com/docopt/docopt-go"
 	"github.com/olekukonko/tablewriter"
+	"gopkg.in/yaml.v1"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"strconv"
 )
 
@@ -117,10 +119,10 @@ Options:
 
 	if arguments["create"].(bool) {
 		appname := arguments["<appname>"]
-		bytes, err := ioutil.ReadFile(fmt.Sprintf("%v.json", appname))
+		bytes, err := ioutil.ReadFile(fmt.Sprintf("%v/app.yaml", appname))
 		check(err)
 		var appinfo agent.App
-		json.Unmarshal(bytes, &appinfo)
+		yaml.Unmarshal(bytes, &appinfo)
 		fmt.Printf("%v\n", appinfo)
 		var result map[string]interface{}
 		c.CreateApp(&result, appinfo)
@@ -134,7 +136,12 @@ Options:
 		var app agent.App
 		c.GetApp(&app, appid)
 
-		bytes, err := ioutil.ReadFile(fmt.Sprintf("%v.zip", app.Name))
+		// create the zip file
+		zipfilename := fmt.Sprintf("%v.zip", app.Name)
+		_, err := exec.Command("zip", "-r", zipfilename, app.Name).Output()
+		check(err)
+
+		bytes, err := ioutil.ReadFile(zipfilename)
 		check(err)
 
 		var result map[string]interface{}
