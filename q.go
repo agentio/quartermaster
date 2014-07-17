@@ -1,15 +1,19 @@
 package main
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
 	"github.com/agentio/agent"
 	"github.com/docopt/docopt-go"
 	"github.com/olekukonko/tablewriter"
 	"gopkg.in/yaml.v1"
+	"io"
 	"io/ioutil"
+	"log"
 	"os"
-	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strconv"
 )
 
@@ -17,6 +21,60 @@ func check(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func createAppArchive(appName string, zipFileName string) error {
+	// create a new zip archive.
+	buf, err := os.Create(zipFileName)
+	w := zip.NewWriter(buf)
+
+	// exclude anything matching this pattern from the archive
+	exclusionPattern :=
+		"(.DS_Store)" + "|" +
+			"(go/.*/.git)" + "|" +
+			"(go/.*/.bzr)" + "|" +
+			"(go/.*/.hg)" + "|" +
+			"(go/pkg)" + "|" +
+			"(go/bin)"
+	patternToExclude := regexp.MustCompile(exclusionPattern)
+
+	// traverse the app directory, adding non-excluded files to the zip archive
+	filepath.Walk(appName,
+		func(path string, info os.FileInfo, err error) error {
+			// skip excluded files
+			if patternToExclude.MatchString(path) {
+				//fmt.Printf("excluding %v\n", path)
+			} else {
+				fi, err := os.Open(path)
+				defer fi.Close()
+				fi_stat, err := fi.Stat()
+				if err != nil {
+					fmt.Println(err)
+					return err
+				}
+				switch mode := fi_stat.Mode(); {
+				case mode.IsRegular():
+					// append regular files to the archive
+					fo, err := w.Create(path)
+					if err != nil {
+						log.Fatal(err)
+					}
+					_, err = io.Copy(fo, fi)
+				case mode.IsDir():
+					// ignore directories, they will be implicit in the path names
+				}
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+			return err
+		})
+
+	err = w.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return err
 }
 
 func main() {
@@ -148,10 +206,14 @@ Options:
 		var app agent.App
 		c.GetApp(&app, appid)
 
+		var err error
+
 		// create the zip file
 		zipfilename := fmt.Sprintf("%v.zip", app.Name)
-		_, err := exec.Command("zip", "-r", zipfilename, app.Name).Output()
-		check(err)
+
+		os.Remove(zipfilename)
+
+		err = createAppArchive(appid, zipfilename)
 
 		bytes, err := ioutil.ReadFile(zipfilename)
 		check(err)
@@ -159,6 +221,7 @@ Options:
 		var result map[string]interface{}
 		c.CreateAppVersion(&result, appid, bytes)
 		fmt.Printf("\n%+v\n\n", result)
+
 		return
 	}
 
