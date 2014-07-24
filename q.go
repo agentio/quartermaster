@@ -90,6 +90,7 @@ Usage:
   q (start|stop|restart) <appid> <versionid>
   q delete <appid>
   q delete <appid> <versionid>  
+  q log <workerid>
   q -h | --help
   q --version
 
@@ -187,6 +188,13 @@ Options:
 		return
 	}
 
+	if arguments["log"].(bool) {
+		var log string
+		err := c.GetLogForWorker(&log, arguments["<workerid>"].(string))
+		check(err)
+		fmt.Printf("%+v\n", log)
+	}
+	
 	if arguments["create"].(bool) {
 		appname := arguments["<appname>"]
 		bytes, err := ioutil.ReadFile(fmt.Sprintf("%v/app.yaml", appname))
@@ -297,5 +305,5 @@ Options:
 		return
 	}
 
-	fmt.Printf("\n%+v\n\n", arguments)
+	//fmt.Printf("\n%+v\n\n", arguments)
 }
